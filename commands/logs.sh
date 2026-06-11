@@ -26,7 +26,7 @@ HELP
   exit 0
 fi
 
-LOG_TARGET=$(echo "$TEXT" | awk '{print $2}')
+REQUESTED_LOG_TARGET=$(echo "$TEXT" | awk '{print $2}')
 LOG_LINES=$(echo "$TEXT" | awk '{print $3}')
 
 if [ -z "$LOG_LINES" ]; then
@@ -38,15 +38,15 @@ if ! echo "$LOG_LINES" | grep -Eq '^[0-9]+$'; then
   exit 0
 fi
 
-case "$LOG_TARGET" in
+case "$REQUESTED_LOG_TARGET" in
   bot_control|provision_arm|report|tg_send|tg_receive)
-    LATEST_LOG=$(ls -t "$BASE_DIR/logs/$LOG_TARGET"/*.log 2>/dev/null | head -n 1)
+    LATEST_LOG=$(ls -t "$BASE_DIR/logs/$REQUESTED_LOG_TARGET"/*.log 2>/dev/null | head -n 1)
 
     if [ -z "$LATEST_LOG" ]; then
-      "$BASE_DIR/infra-tools/tg_send.sh" "No logs found for $LOG_TARGET"
+      "$BASE_DIR/infra-tools/tg_send.sh" "No logs found for $REQUESTED_LOG_TARGET"
     else
       LOG_OUTPUT=$(tail -n "$LOG_LINES" "$LATEST_LOG")
-      MESSAGE=$(printf "LOG: %s\nLINES: %s\nFILE: %s\n\n%s" "$LOG_TARGET" "$LOG_LINES" "$LATEST_LOG" "$LOG_OUTPUT")
+      MESSAGE=$(printf "LOG: %s\nLINES: %s\nFILE: %s\n\n%s" "$REQUESTED_LOG_TARGET" "$LOG_LINES" "$LATEST_LOG" "$LOG_OUTPUT")
       "$BASE_DIR/infra-tools/tg_send.sh" "$MESSAGE"
     fi
     ;;
@@ -54,14 +54,14 @@ case "$LOG_TARGET" in
   all)
     MESSAGE=$(printf "LOGS: all\nLINES: %s" "$LOG_LINES")
 
-    for LOG_NAME in bot_control provision_arm report tg_send tg_receive; do
-      LATEST_LOG=$(ls -t "$BASE_DIR/logs/$LOG_NAME"/*.log 2>/dev/null | head -n 1)
+    for LOG_TARGET in bot_control provision_arm report tg_send tg_receive; do
+      LATEST_LOG=$(ls -t "$BASE_DIR/logs/$LOG_TARGET"/*.log 2>/dev/null | head -n 1)
 
       if [ -z "$LATEST_LOG" ]; then
-        MESSAGE=$(printf "%s\n\n== %s ==\nNo logs found" "$MESSAGE" "$LOG_NAME")
+        MESSAGE=$(printf "%s\n\n== %s ==\nNo logs found" "$MESSAGE" "$LOG_TARGET")
       else
         LOG_OUTPUT=$(tail -n "$LOG_LINES" "$LATEST_LOG")
-        MESSAGE=$(printf "%s\n\n== %s ==\n%s" "$MESSAGE" "$LOG_NAME" "$LOG_OUTPUT")
+        MESSAGE=$(printf "%s\n\n== %s ==\n%s" "$MESSAGE" "$LOG_TARGET" "$LOG_OUTPUT")
       fi
     done
 
@@ -69,6 +69,6 @@ case "$LOG_TARGET" in
     ;;
 
   *)
-    "$BASE_DIR/infra-tools/tg_send.sh" "Unknown log target: $LOG_TARGET. Use /logs for help."
+    "$BASE_DIR/infra-tools/tg_send.sh" "Unknown log target: $REQUESTED_LOG_TARGET. Use /logs for help."
     ;;
 esac
