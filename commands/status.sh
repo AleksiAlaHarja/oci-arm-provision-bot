@@ -27,11 +27,6 @@ else
   NEXT_REPORT="$(TZ=Europe/Helsinki date -d "tomorrow" +"%d.%m.%y - 07:00:00") - report.sh"
 fi
 
-STATUS_MESSAGE=$(printf "RUNNING:
-%s
-
-SCHEDULED:
-- %s
-" "$RUNNING" "$NEXT_REPORT")
+STATUS_MESSAGE=$(printf "RUNNING:\n%s\n\nSCHEDULED:\n- %s\n" "$RUNNING" "$NEXT_REPORT")
 
 "$BASE_DIR/infra-tools/tg_send.sh" "$STATUS_MESSAGE"
