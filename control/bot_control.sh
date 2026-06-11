@@ -75,180 +75,31 @@ while true; do
       case "$TEXT" in
 
         "/ping")
-          "$BASE_DIR/infra-tools/tg_send.sh" "pong"
+          "$BASE_DIR/commands/ping.sh"
           ;;
 
         "/report")
-          "$BASE_DIR/tasks/report.sh"
+          "$BASE_DIR/commands/report.sh"
           ;;
 
         "/status")
-          PID=$(jq -r ".provision_arm.pid // empty" "$PROCESSES_FILE")
-          STATUS=$(jq -r '.provision_arm.status // "stopped"' "$PROCESSES_FILE")
-
-          if [ "$STATUS" = "running" ] && { [ -z "$PID" ] || ! kill -0 "$PID" 2>/dev/null; }; then
-            tmp=$(mktemp)
-            jq '.provision_arm.status = "stopped"' "$PROCESSES_FILE" > "$tmp" && mv "$tmp" "$PROCESSES_FILE"
-          fi
-
-          RUNNING=$(jq -r '
-            to_entries
-            | map(select(.value.status == "running"))
-            | if length == 0 then "- none"
-              else map("- " + .key + ".sh (PID " + (.value.pid|tostring) + ")") | join("\n")
-              end
-          ' "$PROCESSES_FILE")
-
-          NOW_TIME=$(TZ=Europe/Helsinki date +"%H%M")
-
-          if [ "$NOW_TIME" -lt 700 ]; then
-            NEXT_REPORT="$(TZ=Europe/Helsinki date +"%d.%m.%y - 07:00:00") - report.sh"
-          else
-            NEXT_REPORT="$(TZ=Europe/Helsinki date -d "tomorrow" +"%d.%m.%y - 07:00:00") - report.sh"
-          fi
-
-          STATUS_MESSAGE=$(printf "RUNNING:\n%s\n\nSCHEDULED:\n- %s\n" "$RUNNING" "$NEXT_REPORT")
-
-          "$BASE_DIR/infra-tools/tg_send.sh" "$STATUS_MESSAGE"
+          "$BASE_DIR/commands/status.sh"
           ;;
 
         "/start provision_arm")
-          PID=$(jq -r '.provision_arm.pid // empty' "$PROCESSES_FILE")
-          STATUS=$(jq -r '.provision_arm.status // "stopped"' "$PROCESSES_FILE")
-
-          if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null && [ "$STATUS" = "running" ]; then
-            "$BASE_DIR/infra-tools/tg_send.sh" "provision_arm already running (PID $PID)"
-          else
-            nohup "$BASE_DIR/daemon/provision_arm.sh" >/dev/null 2>&1 &
-            NEW_PID=$!
-            STARTED_AT=$(date -Is)
-
-            tmp=$(mktemp)
-            jq --argjson pid "$NEW_PID" --arg started_at "$STARTED_AT" '
-              .provision_arm = {
-                "pid": $pid,
-                "script": "daemon/provision_arm.sh",
-                "status": "running",
-                "started_at": $started_at
-              }
-            ' "$PROCESSES_FILE" > "$tmp" && mv "$tmp" "$PROCESSES_FILE"
-
-            "$BASE_DIR/infra-tools/tg_send.sh" "Started provision_arm (PID $NEW_PID)"
-          fi
+          "$BASE_DIR/commands/start_provision_arm.sh"
           ;;
 
         "/stop provision_arm")
-          PID=$(jq -r '.provision_arm.pid // empty' "$PROCESSES_FILE")
-
-          if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-            kill "$PID"
-
-            tmp=$(mktemp)
-            jq '.provision_arm.status = "stopped"' "$PROCESSES_FILE" > "$tmp" && mv "$tmp" "$PROCESSES_FILE"
-
-            "$BASE_DIR/infra-tools/tg_send.sh" "Stopped provision_arm (PID $PID)"
-          else
-            tmp=$(mktemp)
-            jq '.provision_arm.status = "stopped"' "$PROCESSES_FILE" > "$tmp" && mv "$tmp" "$PROCESSES_FILE"
-
-            "$BASE_DIR/infra-tools/tg_send.sh" "provision_arm is not running"
-          fi
+          "$BASE_DIR/commands/stop_provision_arm.sh"
           ;;
 
         "/restart provision_arm")
-          PID=$(jq -r '.provision_arm.pid // empty' "$PROCESSES_FILE")
-
-          if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
-            kill "$PID"
-          fi
-
-          nohup "$BASE_DIR/daemon/provision_arm.sh" >/dev/null 2>&1 &
-          NEW_PID=$!
-          STARTED_AT=$(date -Is)
-
-          tmp=$(mktemp)
-          jq --argjson pid "$NEW_PID" --arg started_at "$STARTED_AT" '
-            .provision_arm = {
-              "pid": $pid,
-              "script": "daemon/provision_arm.sh",
-              "status": "running",
-              "started_at": $started_at
-            }
-          ' "$PROCESSES_FILE" > "$tmp" && mv "$tmp" "$PROCESSES_FILE"
-
-          "$BASE_DIR/infra-tools/tg_send.sh" "Restarted provision_arm (PID $NEW_PID)"
+          "$BASE_DIR/commands/restart_provision_arm.sh"
           ;;
 
-
-        "/logs")
-          LOG_HELP=$(cat <<'HELP'
-Usage:
-/logs
-/logs provision_arm
-/logs provision_arm 20
-/logs all
-/logs all 20
-
-Available logs:
-- bot_control
-- provision_arm
-- report
-- tg_send
-- tg_receive
-
-Default lines: 5
-HELP
-)
-          "$BASE_DIR/infra-tools/tg_send.sh" "$LOG_HELP"
-          ;;
-
-        /logs\ *)
-          LOG_TARGET=$(echo "$TEXT" | awk '{print $2}')
-          LOG_LINES=$(echo "$TEXT" | awk '{print $3}')
-
-          if [ -z "$LOG_LINES" ]; then
-            LOG_LINES=5
-          fi
-
-          if ! echo "$LOG_LINES" | grep -Eq '^[0-9]+$'; then
-            "$BASE_DIR/infra-tools/tg_send.sh" "Invalid line count. Example: /logs provision_arm 20"
-            continue
-          fi
-
-          case "$LOG_TARGET" in
-            bot_control|provision_arm|report|tg_send|tg_receive)
-              LATEST_LOG=$(ls -t "$BASE_DIR/logs/$LOG_TARGET"/*.log 2>/dev/null | head -n 1)
-
-              if [ -z "$LATEST_LOG" ]; then
-                "$BASE_DIR/infra-tools/tg_send.sh" "No logs found for $LOG_TARGET"
-              else
-                LOG_OUTPUT=$(tail -n "$LOG_LINES" "$LATEST_LOG")
-                MESSAGE=$(printf "LOG: %s\nLINES: %s\nFILE: %s\n\n%s" "$LOG_TARGET" "$LOG_LINES" "$LATEST_LOG" "$LOG_OUTPUT")
-                "$BASE_DIR/infra-tools/tg_send.sh" "$MESSAGE"
-              fi
-              ;;
-
-            all)
-              MESSAGE=$(printf "LOGS: all\nLINES: %s" "$LOG_LINES")
-
-              for LOG_TARGET in bot_control provision_arm report tg_send tg_receive; do
-                LATEST_LOG=$(ls -t "$BASE_DIR/logs/$LOG_TARGET"/*.log 2>/dev/null | head -n 1)
-
-                if [ -z "$LATEST_LOG" ]; then
-                  MESSAGE=$(printf "%s\n\n== %s ==\nNo logs found" "$MESSAGE" "$LOG_TARGET")
-                else
-                  LOG_OUTPUT=$(tail -n "$LOG_LINES" "$LATEST_LOG")
-                  MESSAGE=$(printf "%s\n\n== %s ==\n%s" "$MESSAGE" "$LOG_TARGET" "$LOG_OUTPUT")
-                fi
-              done
-
-              "$BASE_DIR/infra-tools/tg_send.sh" "$MESSAGE"
-              ;;
-
-            *)
-              "$BASE_DIR/infra-tools/tg_send.sh" "Unknown log target: $LOG_TARGET. Use /logs for help."
-              ;;
-          esac
+        "/logs"|/logs\ *)
+          "$BASE_DIR/commands/logs.sh" "$TEXT"
           ;;
 
         *)
@@ -261,4 +112,3 @@ HELP
 
   sleep 5
 done
-``
