@@ -1,0 +1,35 @@
+# Secrets
+.env
+.env.*
+*.env
+!.env.example
+
+# Keys
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+.ssh/
+.oci/
+
+# Logs
+logs/
+*.log
+
+# Runtime state
+state/*.json
+state/*.txt
+
+# Backups and temp files
+*.backup
+*.save
+*.bak
+*.tmp
+*.swp
+*~
+
+# Python/editor
+__pycache__/
+*.pyc
+.vscode/
+.idea/
