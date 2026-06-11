@@ -54,14 +54,14 @@ case "$LOG_TARGET" in
   all)
     MESSAGE=$(printf "LOGS: all\nLINES: %s" "$LOG_LINES")
 
-    for LOG_NAME in bot_control provision_arm report tg_send tg_receive; do
-      LATEST_LOG=$(ls -t "$BASE_DIR/logs/${LOG_NAME}"/*.log 2>/dev/null | head -n 1)
+    for LOG_TARGET in bot_control provision_arm report tg_send tg_receive; do
+      LATEST_LOG=$(ls -t "$BASE_DIR/logs/${LOG_TARGET}"/*.log 2>/dev/null | head -n 1)
 
       if [ -z "$LATEST_LOG" ]; then
-        MESSAGE=$(printf "%s\n\n== %s ==\nNo logs found" "$MESSAGE" "$LOG_NAME")
+        MESSAGE=$(printf "%s\n\n== %s ==\nNo logs found" "$MESSAGE" "$LOG_TARGET")
       else
         LOG_OUTPUT=$(tail -n "$LOG_LINES" "$LATEST_LOG")
-        MESSAGE=$(printf "%s\n\n== %s ==\n%s" "$MESSAGE" "$LOG_NAME" "$LOG_OUTPUT")
+        MESSAGE=$(printf "%s\n\n== %s ==\n%s" "$MESSAGE" "$LOG_TARGET" "$LOG_OUTPUT")
       fi
     done
 
