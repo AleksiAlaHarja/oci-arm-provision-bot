@@ -6,7 +6,7 @@ TEXT="$1"
 TARGET=$(echo "$TEXT" | awk '{print $2}')
 
 if [ "$TARGET" != "provision_arm" ]; then
-    "$BASE_DIR/infra-tools/tg_send.sh" $'Unsupported target: $TARGET \nUse eg. /start provision_arm'
+    "$BASE_DIR/infra-tools/tg_send.sh" $'Unsupported target. \nUse eg: \n/start provision_arm'
     exit 1
 fi
 
