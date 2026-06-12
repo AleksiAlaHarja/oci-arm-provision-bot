@@ -17,7 +17,7 @@ STATS_FILE="$BASE_DIR/state/stats.json"
 
 echo "[$(date -Is)] bot_control.sh started"
 
-"$BASE_DIR/infra-tools/tg_send.sh" "Bot control käynnistyi. Tarkista tila komennolla /status. Jos provision_arm ei ole käynnissä, käynnistä se komennolla /start provision_arm."
+"$BASE_DIR/infra-tools/tg_send.sh" "Bot_control.sh started. \nRecommended to check /status. \nIf provision_arm is not running, use \"/start provision_arm\"."
 
 while true; do
 
@@ -77,17 +77,32 @@ while true; do
       # DYNAAMINEN KOMENTOJEN REITITYS
       # ==============================
 
-      # Erotetaan pelkkä komennon nimi ilman kauttaviivaa (esim. "/start provision_arm" -> "start")
+      # Erotetaan pelkkä komennon nimi ilman kauttaviivaa
+      # Esim. "/start provision_arm" -> "start"
       CMD_RAW=$(echo "$TEXT" | awk '{print $1}')
       CMD_NAME=${CMD_RAW#/}
+      COMMAND_SCRIPT="$BASE_DIR/control/commands/${CMD_NAME}.sh"
 
-      # Tarkistetaan onko commands-kansiossa pyydettyä komentoa vastaava skripti (.sh)
-      if [ -n "$CMD_NAME" ] && [ -f "$BASE_DIR/control/commands/${CMD_NAME}.sh" ]; then
+      if [ -n "$CMD_NAME" ] && [ -f "$COMMAND_SCRIPT" ]; then
+        echo "[$(date -Is)] Command script found: ${CMD_NAME}.sh"
+
+        if [ ! -x "$COMMAND_SCRIPT" ]; then
+          echo "[$(date -Is)] Command script is not executable, running chmod +x: $COMMAND_SCRIPT"
+          chmod +x "$COMMAND_SCRIPT"
+
+          if [ ! -x "$COMMAND_SCRIPT" ]; then
+            echo "[$(date -Is)] Failed to make command executable: $COMMAND_SCRIPT"
+            "$BASE_DIR/infra-tools/tg_send.sh" "Command found but could not make it executable: ${CMD_NAME}.sh"
+            continue
+          fi
+        fi
+
         echo "[$(date -Is)] Delegating to modular command: ${CMD_NAME}.sh"
-        # Ajetaan modulaarinen skripti ja annetaan sille alkuperäinen viesti parametrinä ($1)
-        "$BASE_DIR/control/commands/${CMD_NAME}.sh" "$TEXT"
+        "$COMMAND_SCRIPT" "$TEXT"
+
       else
-        echo "Unknown command or script missing: $TEXT"
+        echo "[$(date -Is)] Unknown command or script missing: $TEXT"
+        "$BASE_DIR/infra-tools/tg_send.sh" "Unknown command: $CMD_RAW. No handler found at control/commands/${CMD_NAME}.sh"
       fi
 
     done
