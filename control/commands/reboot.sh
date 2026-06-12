@@ -6,7 +6,7 @@ source "$BASE_DIR/.env"
 
 TG_SEND="$BASE_DIR/infra-tools/tg_send.sh"
 
-"$TG_SEND" "Server /reboot requested. \nServer will reboot in a few seconds. \nBot_control.sh will notify when it's back online."
+"$TG_SEND" $'Server /reboot requested. \nServer will reboot in a few seconds. \nBot_control.sh will notify when it´s back online.'
 
 sleep 5
 
