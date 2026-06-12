@@ -12,19 +12,19 @@ TEXT="${1:-}"
 PID=$(echo "$TEXT" | awk '{print $2}')
 
 if [ -z "$PID" ]; then
-    "$TG_SEND" "Which process do you want to stop? Use /stop <PID>. Current status:"
+    "$TG_SEND" $'Which process do you want to stop? \nUse /stop <process-id>. \nCurrent processes:'
     "$STATUS_SCRIPT"
     exit 0
 fi
 
 if ! echo "$PID" | grep -Eq '^[0-9]+$'; then
-    "$TG_SEND" "Invalid PID: $PID. Use /stop <PID>. Current status:"
+    "$TG_SEND" $'Invalid PID: $PID. \nUse /stop <process-id>. \nCurrent processes:'
     "$STATUS_SCRIPT"
     exit 1
 fi
 
 if ! kill -0 "$PID" 2>/dev/null; then
-    "$TG_SEND" "Process $PID is not running. Current status:"
+    "$TG_SEND" $'Process $PID is not running. \nCurrent processes:'
     "$STATUS_SCRIPT"
     exit 1
 fi
@@ -32,12 +32,12 @@ fi
 CMD=$(tr '\0' ' ' < "/proc/$PID/cmdline" 2>/dev/null | sed 's/[[:space:]]*$//' || true)
 
 if [ -z "$CMD" ]; then
-    "$TG_SEND" "Could not inspect process $PID. Refusing to stop it."
+    "$TG_SEND" $'Could not inspect process $PID. \nRefusing to stop it.'
     exit 1
 fi
 
 if [[ "$CMD" != *"$BASE_DIR"* ]]; then
-    "$TG_SEND" "Refusing to stop PID $PID because it does not look like an oci-arm-provision-bot process."
+    "$TG_SEND" $'Refusing to stop process-id $PID because it does not look like an oci-arm-provision-bot process.'
     exit 1
 fi
 
