@@ -17,7 +17,7 @@ STATS_FILE="$BASE_DIR/state/stats.json"
 
 echo "[$(date -Is)] bot_control.sh started"
 
-"$BASE_DIR/infra-tools/tg_send.sh" "Bot_control.sh started. \nRecommended to check /status. \nIf provision_arm is not running, use \"/start provision_arm\"."
+"$BASE_DIR/infra-tools/tg_send.sh" $'Bot_control.sh started. \nRecommended to check /status. \nIf provision_arm is not running, use "/start provision_arm".'
 
 while true; do
 

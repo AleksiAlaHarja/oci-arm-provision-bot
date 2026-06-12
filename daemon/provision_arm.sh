@@ -12,6 +12,7 @@ exec >> "$LOG_FILE" 2>&1
 source "$BASE_DIR/.env"
 
 STATS_FILE="$BASE_DIR/state/stats.json"
+PROCESSES_FILE="$BASE_DIR/state/processes.json"
 
 echo "[$(date -Is)] provision_arm.sh daemon started"
 
@@ -62,6 +63,7 @@ while true; do
 
   NOW=$(date -Is)
 
+  # 1. ONNISTUMINEN (Tarkistetaan onko vasteessa luodun instanssin id)
   if echo "$RESPONSE" | grep -q "ocid1.instance"; then
     tmp=$(mktemp)
     jq --arg now "$NOW" '
@@ -70,11 +72,11 @@ while true; do
     ' "$STATS_FILE" > "$tmp" && mv "$tmp" "$STATS_FILE"
 
     echo "[$(date -Is)] Provision succeeded"
-
-    "$BASE_DIR/infra-tools/tg_send.sh" "ARM instance provision succeeded."
-
+    "$BASE_DIR/infra-tools/tg_send.sh" "🚀 ARM instance provision succeeded! Palvelin on pystyssä."
     exit 0
-  else
+
+  # 2. NORMAALI SKENAARIO: RESURSSIPULA (Odotetaan ja yritetään uudelleen)
+  elif echo "$RESPONSE" | grep -iqE "out of capacity|outcapacity|limit exceeded"; then
     ERROR_MSG=$(echo "$RESPONSE" | tr '\n' ' ' | cut -c 1-500)
 
     tmp=$(mktemp)
@@ -83,10 +85,32 @@ while true; do
       | .last_provision_error = $error
     ' "$STATS_FILE" > "$tmp" && mv "$tmp" "$STATS_FILE"
 
-    echo "[$(date -Is)] Provision failed"
-    echo "[$(date -Is)] Error saved to stats.json"
-    echo "[$(date -Is)] Sleeping 300 seconds before next attempt"
-
+    echo "[$(date -Is)] Provision failed due to capacity. Sleeping 300 seconds."
     sleep 300
+
+  # 3. KRIITTINEN VIRHE: Jokin konfiguraatio tai oikeus on väärin (Pysäytetään)
+  else
+    ERROR_MSG=$(echo "$RESPONSE" | tr '\n' ' ' | cut -c 1-500)
+
+    # Päivitetään stats.json virhetiedot
+    tmp=$(mktemp)
+    jq --arg error "$ERROR_MSG" '
+      .provision_fail_total = ((.provision_fail_total // 0) + 1)
+      | .last_provision_error = $error
+    ' "$STATS_FILE" > "$tmp" && mv "$tmp" "$STATS_FILE"
+
+    # Päivitetään processes.json status stopped-tilaan, jotta /status ei näytä "running"
+    tmp_proc=$(mktemp)
+    jq '.provision_arm.status = "stopped"' "$PROCESSES_FILE" > "$tmp_proc" && mv "$tmp_proc" "$PROCESSES_FILE"
+
+    echo "[$(date -Is)] CRITICAL ERROR ENCOUNTERED. Stopping daemon."
+    
+    # Lähetetään hälytys Telegramiin alkuperäisen virheen kanssa
+    "$BASE_DIR/infra-tools/tg_send.sh" "⚠️ PROVISION_ARM PYSÄYTETTY KRIITTISEN VIRHEEN VUOKSI! 
+    
+Virhe ilmoitus:
+$RESPONSE"
+
+    exit 1
   fi
 done

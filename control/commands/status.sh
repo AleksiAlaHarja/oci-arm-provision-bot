@@ -1,36 +1,65 @@
 #!/bin/bash
+set -u
+
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$BASE_DIR/.env"
 
-PROCESSES_FILE="$BASE_DIR/state/processes.json"
-STATS_FILE="$BASE_DIR/state/stats.json"
+TG_SEND="$BASE_DIR/infra-tools/tg_send.sh"
 
-PID=$(jq -r '.provision_arm.pid // empty' "$PROCESSES_FILE")
-STATUS=$(jq -r '.provision_arm.status // "stopped"' "$PROCESSES_FILE")
+mapfile -t KNOWN_SCRIPTS < <(find "$BASE_DIR" -type f -name "*.sh" -printf "%P\n" | sort)
 
-# If status says running but PID is dead, update status to stopped
-if [ "$STATUS" = "running" ] && { [ -z "$PID" ] || ! kill -0 "$PID" 2>/dev/null; }; then
-    tmp=$(mktemp)
-    jq '.provision_arm.status = "stopped"' "$PROCESSES_FILE" > "$tmp" && mv "$tmp" "$PROCESSES_FILE"
-    STATUS="stopped"
+LINES=""
+COUNT=0
+
+for PROC in /proc/[0-9]*; do
+  PID="${PROC##*/}"
+
+  if [ "$PID" = "$$" ]; then
+    continue
+  fi
+
+  CMD=$(tr '\0' ' ' < "$PROC/cmdline" 2>/dev/null | sed 's/[[:space:]]*$//' || true)
+
+  if [ -z "$CMD" ]; then
+    continue
+  fi
+
+  MATCHED_SCRIPT=""
+
+  for SCRIPT in "${KNOWN_SCRIPTS[@]}"; do
+    if [[ "$CMD" = *"$BASE_DIR/$SCRIPT"* || "$CMD" = *"./$SCRIPT"* || "$CMD" = *" $SCRIPT"* || "$CMD" = "$SCRIPT"* ]]; then
+      MATCHED_SCRIPT="$(basename "$SCRIPT")"
+      break
+    fi
+  done
+
+  if [ -z "$MATCHED_SCRIPT" ]; then
+    continue
+  fi
+
+  LINES="${LINES}${PID}: ${MATCHED_SCRIPT}"$'\n'
+  COUNT=$((COUNT + 1))
+done
+
+if [ "$COUNT" -eq 0 ]; then
+  LINES="none"
 fi
-
-RUNNING=$(jq -r '
-    to_entries
-    | map(select(.value.status == "running"))
-    | if length == 0 then "- none"
-      else map("- " + .key + ".sh (PID " + (.value.pid|tostring) + ")") | join("\n")
-      end
-' "$PROCESSES_FILE")
 
 NOW_TIME=$(TZ=Europe/Helsinki date +"%H%M")
 
 if [ "$NOW_TIME" -lt 700 ]; then
-    NEXT_REPORT="$(TZ=Europe/Helsinki date +"%d.%m.%y - 07:00:00") - report.sh"
+  NEXT_REPORT="$(TZ=Europe/Helsinki date +"%d.%m.%y - 07:00:00") - report.sh"
 else
-    NEXT_REPORT="$(TZ=Europe/Helsinki date -d "tomorrow" +"%d.%m.%y - 07:00:00") - report.sh"
+  NEXT_REPORT="$(TZ=Europe/Helsinki date -d "tomorrow" +"%d.%m.%y - 07:00:00") - report.sh"
 fi
 
-STATUS_MESSAGE=$(printf "RUNNING:\n%s\n\nSCHEDULED:\n- %s\n" "$RUNNING" "$NEXT_REPORT")
+MESSAGE=$(cat <<MSG
+RUNNING PROCESSES
+$LINES
 
-"$BASE_DIR/infra-tools/tg_send.sh" "$STATUS_MESSAGE"
+SCHEDULED
+$NEXT_REPORT
+MSG
+)
+
+"$TG_SEND" "$MESSAGE"
