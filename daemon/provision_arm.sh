@@ -76,7 +76,7 @@ while true; do
     exit 0
 
   # 2. NORMAALI SKENAARIO: RESURSSIPULA (Odotetaan ja yritetään uudelleen)
-  elif echo "$RESPONSE" | grep -iqE "out of capacity|outcapacity|limit exceeded"; then
+  elif echo "$RESPONSE" | grep -iqE "out of host capacity|out of capacity|outcapacity|insufficient.*capacity|limit exceeded"; then
     ERROR_MSG=$(echo "$RESPONSE" | tr '\n' ' ' | cut -c 1-500)
 
     tmp=$(mktemp)
@@ -101,15 +101,70 @@ while true; do
 
     # Päivitetään processes.json status stopped-tilaan, jotta /status ei näytä "running"
     tmp_proc=$(mktemp)
-    jq '.provision_arm.status = "stopped"' "$PROCESSES_FILE" > "$tmp_proc" && mv "$tmp_proc" "$PROCESSES_FILE"
 
-    echo "[$(date -Is)] CRITICAL ERROR ENCOUNTERED. Stopping daemon."
-    
-    # Lähetetään hälytys Telegramiin alkuperäisen virheen kanssa
-    "$BASE_DIR/infra-tools/tg_send.sh" "⚠️ PROVISION_ARM PYSÄYTETTY KRIITTISEN VIRHEEN VUOKSI! 
-    
-Virhe ilmoitus:
-$RESPONSE"
+    if jq --argjson pid "$$" '
+      .provision_arm.status = "stopped"
+      | .provision_arm.stopped_at = now | todate
+      | .provision_arm.stopped_pid = $pid
+    ' "$PROCESSES_FILE" > "$tmp_proc" && mv "$tmp_proc" "$PROCESSES_FILE"; then
+      PROCESS_STATE_UPDATED="yes"
+    else
+      PROCESS_STATE_UPDATED="no"
+    fi
+
+    echo "[$(date -Is)] CRITICAL ERROR ENCOUNTERED. Stopping daemon. PID=$$"
+
+    ERROR_CODE=$(echo "$RESPONSE" | grep -o '"code": "[^"]*"' | head -1 | cut -d'"' -f4)
+    ERROR_MESSAGE=$(echo "$RESPONSE" | grep -o '"message": "[^"]*"' | head -1 | cut -d'"' -f4)
+    ERROR_STATUS=$(echo "$RESPONSE" | grep -o '"status": [0-9]*' | head -1 | awk '{print $2}')
+    ERROR_OPERATION=$(echo "$RESPONSE" | grep -o '"operation_name": "[^"]*"' | head -1 | cut -d'"' -f4)
+    ERROR_REQUEST_ID=$(echo "$RESPONSE" | grep -o '"opc-request-id": "[^"]*"' | head -1 | cut -d'"' -f4)
+
+    if [ -z "$ERROR_CODE" ]; then
+      ERROR_CODE="unknown"
+    fi
+
+    if [ -z "$ERROR_MESSAGE" ]; then
+      ERROR_MESSAGE=$(echo "$RESPONSE" | tr '\n' ' ' | cut -c 1-300)
+    fi
+
+    if [ -z "$ERROR_STATUS" ]; then
+      ERROR_STATUS="unknown"
+    fi
+
+    if [ -z "$ERROR_OPERATION" ]; then
+      ERROR_OPERATION="unknown"
+    fi
+
+    if [ -z "$ERROR_REQUEST_ID" ]; then
+      ERROR_REQUEST_ID="unknown"
+    fi
+
+    ALERT_MESSAGE=$(cat <<MSG
+PROVISION_ARM STOPPED DUE TO CRITICAL ERROR
+
+Process:
+PID: $$
+File: provision_arm.sh
+Stopped: yes
+processes.json updated: $PROCESS_STATE_UPDATED
+
+Error:
+Code: $ERROR_CODE
+Status: $ERROR_STATUS
+Operation: $ERROR_OPERATION
+Message: $ERROR_MESSAGE
+
+OCI request id:
+$ERROR_REQUEST_ID
+
+Action:
+The daemon has exited. Check logs and restart with:
+/start provision_arm
+MSG
+)
+
+    "$BASE_DIR/infra-tools/tg_send.sh" "$ALERT_MESSAGE"
 
     exit 1
   fi
